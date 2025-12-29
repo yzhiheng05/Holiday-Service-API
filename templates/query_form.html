@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Gateway 假日查询工具</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: auto; }
+        #queryForm div { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 5px; }
+        select, input[type="text"] { padding: 8px; width: 100%; box-sizing: border-box; }
+        button { padding: 10px 20px; background-color: #007bff; color: white; border: none; cursor: pointer; }
+        #resultsTable { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        #resultsTable th, #resultsTable td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        #resultsTable th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>r Group 假日查询网关</h1>
+
+        <form id="queryForm">
+            <div>
+                <label for="country">国家/地区代码 (Country Code)</label>
+                <select id="country" required>
+                    {% for country in countries %}
+                        <option value="{{ country }}" {% if country == 'CN' %}selected{% endif %}>{{ country }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div>
+                <label for="year">年份 (Year)</label>
+                <select id="year" required>
+                    {% for year in years %}
+                        <option value="{{ year }}">{{ year }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div>
+                <label for="month">月份 (Month, 可选)</label>
+                <select id="month">
+                    <option value="">- 所有月份 -</option>
+                    {% for i in range(1, 13) %}
+                        <option value="{{ '%02d' | format(i) }}">{{ '%02d' | format(i) }}月</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div>
+                <label for="name">节假日名称 (Name, 可选)</label>
+                <input type="text" id="name" placeholder="输入节假日名称关键词 (如: New Year)">
+            </div>
+            
+            <button type="submit">查询假日数据</button>
+        </form>
+
+        <h2 style="margin-top: 40px;">查询结果</h2>
+        <div id="statusMessage" style="color: red; margin-bottom: 10px;"></div>
+        <table id="resultsTable">
+            <thead>
+                <tr>
+                    <th>日期 (Date)</th>
+                    <th>月份 (Month)</th>
+                    <th>节假日名称 (Name)</th>
+                    <th>国家 (Code)</th>
+                </tr>
+            </thead>
+            <tbody id="resultsBody">
+                </tbody>
+        </table>
+    </div>
+
+    <script>
+        document.getElementById('queryForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+
+            const country = document.getElementById('country').value;
+            const year = document.getElementById('year').value;
+            const month = document.getElementById('month').value;
+            const name = document.getElementById('name').value.trim();
+
+            let url = `/holidays/${country}/${year}`;
+
+            // 根据用户输入构建不同的 API 路径
+            if (name) {
+                // 路径 3: /holidays/<country>/<year>/name/<name>
+                url = `/holidays/${country}/${year}/name/${encodeURIComponent(name)}`;
+            } else if (month) {
+                // 路径 2: /holidays/<country>/<year>/<month>
+                url = `/holidays/${country}/${year}/${month}`;
+            }
+            // 否则使用 路径 1: /holidays/<country>/<year>
+
+            const statusMessage = document.getElementById('statusMessage');
+            const resultsBody = document.getElementById('resultsBody');
+            
+            resultsBody.innerHTML = '<tr><td colspan="4">加载中...</td></tr>';
+            statusMessage.textContent = '';
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (response.ok) { // HTTP 2xx 状态码
+                    if (data.data && data.data.length > 0) {
+                        resultsBody.innerHTML = ''; // 清空加载信息
+                        data.data.forEach(holiday => {
+                            const row = resultsBody.insertRow();
+                            row.insertCell(0).textContent = holiday.date;
+                            row.insertCell(1).textContent = holiday.month;
+                            row.insertCell(2).textContent = holiday.name;
+                            row.insertCell(3).textContent = holiday.countryCode;
+                        });
+                        statusMessage.textContent = `成功找到 ${data.count} 条记录。`;
+                        statusMessage.style.color = 'green';
+                    } else {
+                        resultsBody.innerHTML = '<tr><td colspan="4">未找到符合条件的节假日数据。</td></tr>';
+                        statusMessage.textContent = data.message || '查询成功，但无数据。';
+                        statusMessage.style.color = 'orange';
+                    }
+                } else { // 处理非 2xx 状态码 (如 400, 404, 503)
+                    // 即使您的 Gateway 强制返回 200 (这是我们之前讨论的妥协)，
+                    // 这里的代码仍然是处理非 200 响应的最佳实践。
+                    const errorMsg = data.error || data.message || `HTTP 错误: ${response.status}`;
+                    resultsBody.innerHTML = `<tr><td colspan="4">查询失败</td></tr>`;
+                    statusMessage.textContent = errorMsg;
+                    statusMessage.style.color = 'red';
+                }
+            } catch (error) {
+                resultsBody.innerHTML = `<tr><td colspan="4">网络连接错误或 Gateway 自身故障。</td></tr>`;
+                statusMessage.textContent = `客户端网络错误: ${error.message}`;
+                statusMessage.style.color = 'red';
+            }
+        });
+    </script>
+</body>
+</html>
